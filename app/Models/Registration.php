@@ -9,12 +9,8 @@ class Registration extends Model
 {
     use HasFactory;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
+        'user_id', // Ditambahkan
         'nama_lengkap',
         'tempat_lahir',
         'tanggal_lahir',
@@ -25,7 +21,7 @@ class Registration extends Model
         'kode_pos_ktp',
         'alamat_rumah',
         'kode_pos_rumah',
-        'telepon_rumah',          // Ditambahkan
+        'telepon_rumah',
         'no_ktp',
         'no_hp',
         'email',
@@ -45,12 +41,15 @@ class Registration extends Model
         'status',
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
         'fasilitas_menarik' => 'array',
     ];
+
+    /**
+     * Relasi: Data pendaftaran ini dimiliki oleh satu User.
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }

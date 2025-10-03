@@ -4,28 +4,20 @@ namespace App\Http\Controllers;
 
 use App\Models\Registration;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\Auth;
+use Barryvdh\DomPDF\Facade\Pdf; // Import PDF
 
 class RegistrationController extends Controller
 {
-    // Menampilkan halaman formulir pendaftaran
-    public function create()
-    {
-        return view('registration.create');
-    }
-
-    // Menyimpan data pendaftaran
     public function store(Request $request)
     {
-        // Logika untuk menangani input gabungan
+        // ... (Logika input gabungan tetap sama)
         $mengenalDari = $request->input('mengenal_dari_radio');
         if ($mengenalDari === 'Lain-lain') {
             $request->merge(['mengenal_dari' => $request->input('mengenal_dari_lainnya')]);
         } else {
             $request->merge(['mengenal_dari' => $mengenalDari]);
         }
-
         $pekerjaan = $request->input('pekerjaan_radio');
         if ($pekerjaan === 'Wiraswasta') {
             $request->merge(['pekerjaan' => 'Wiraswasta: ' . $request->input('pekerjaan_wiraswasta')]);
@@ -35,7 +27,6 @@ class RegistrationController extends Controller
             $request->merge(['pekerjaan' => $pekerjaan]);
         }
 
-        // Validasi data
         $validatedData = $request->validate([
             'nama_lengkap' => 'required|string|max:20',
             'tempat_lahir' => 'required|string|max:255',
@@ -48,9 +39,8 @@ class RegistrationController extends Controller
             'alamat_rumah' => 'required|string',
             'kode_pos_rumah' => 'required|string|max:10',
             'telepon_rumah' => 'nullable|string|max:15',
-            'no_ktp' => 'required|string|max:20|unique:registrations',
-            'no_hp' => 'required|string|max:15|unique:registrations',
-            'email' => 'required|email|unique:registrations',
+            'no_ktp' => 'required|string|max:20',
+            'no_hp' => 'required|string|max:15',
             'pekerjaan' => 'required|string|max:255',
             'nama_instansi' => 'required|string|max:255',
             'alamat_instansi' => 'required|string',
@@ -66,19 +56,42 @@ class RegistrationController extends Controller
             'signature' => 'required|string',
         ]);
 
-        // Simpan file
-        $validatedData['path_pas_foto'] = $request->file('pas_foto')->store('public/uploads/foto');
-        $validatedData['path_ktp'] = $request->file('scan_ktp')->store('public/uploads/ktp');
-        $validatedData['path_sk_pegawai'] = $request->file('scan_sk')->store('public/uploads/sk');
+        $validatedData['user_id'] = Auth::id();
+        $validatedData['email'] = Auth::user()->email;
+
+        // Simpan file ke storage
+        $validatedData['path_pas_foto'] = $request->file('pas_foto')->store('uploads/foto', 'public');
+        $validatedData['path_ktp'] = $request->file('scan_ktp')->store('uploads/ktp', 'public');
+        $validatedData['path_sk_pegawai'] = $request->file('scan_sk')->store('uploads/sk', 'public');
         $validatedData['tanda_tangan'] = $request->signature;
 
-        Registration::create($validatedData);
+        // Simpan data ke database
+        $registration = Registration::create($validatedData);
 
-        return redirect()->route('registration.success');
+        // Setelah berhasil, arahkan ke halaman preview PDF
+        return redirect()->route('registration.preview', $registration->id);
     }
 
-    public function success()
+    // FUNGSI BARU: Menampilkan preview PDF
+    public function preview($id)
     {
-        return view('registration.success');
+        $registration = Registration::findOrFail($id);
+        // Pastikan hanya user yang bersangkutan yang bisa melihat preview-nya
+        if ($registration->user_id !== Auth::id()) {
+            abort(403);
+        }
+        return view('registration.preview', compact('registration'));
+    }
+
+    // FUNGSI BARU: Download PDF
+    public function download($id)
+    {
+        $registration = Registration::findOrFail($id);
+        if ($registration->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        $pdf = Pdf::loadView('pdf.registration', ['registration' => $registration]);
+        return $pdf->download('formulir-pendaftaran-'.$registration->nama_lengkap.'.pdf');
     }
 }
