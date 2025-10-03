@@ -9,8 +9,13 @@ class Registration extends Model
 {
     use HasFactory;
 
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
     protected $fillable = [
-        'user_id', // Ditambahkan
+        'user_id',
         'nama_lengkap',
         'tempat_lahir',
         'tanggal_lahir',
@@ -39,8 +44,14 @@ class Registration extends Model
         'path_sk_pegawai',
         'tanda_tangan',
         'status',
+        'rejection_reason', // <-- BARIS INI YANG DIPERBAIKI
     ];
 
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array<string, string>
+     */
     protected $casts = [
         'fasilitas_menarik' => 'array',
     ];
