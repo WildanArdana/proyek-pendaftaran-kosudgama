@@ -5,13 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Registration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Barryvdh\DomPDF\Facade\Pdf; // Import PDF
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class RegistrationController extends Controller
 {
     public function store(Request $request)
     {
-        // ... (Logika input gabungan tetap sama)
+        // Logika untuk menggabungkan input
         $mengenalDari = $request->input('mengenal_dari_radio');
         if ($mengenalDari === 'Lain-lain') {
             $request->merge(['mengenal_dari' => $request->input('mengenal_dari_lainnya')]);
@@ -27,13 +27,12 @@ class RegistrationController extends Controller
             $request->merge(['pekerjaan' => $pekerjaan]);
         }
 
+        // Validasi semua data dari form
         $validatedData = $request->validate([
-            'nama_lengkap' => 'required|string|max:20',
+            'nama_lengkap' => 'required|string|max:255',
             'tempat_lahir' => 'required|string|max:255',
             'tanggal_lahir' => 'required|date',
             'jenis_kelamin' => 'required|in:Laki-laki,Perempuan',
-            'mengenal_dari' => 'nullable|string|max:255',
-            'fasilitas_menarik' => 'nullable|array',
             'alamat_ktp' => 'required|string',
             'kode_pos_ktp' => 'required|string|max:10',
             'alamat_rumah' => 'required|string',
@@ -54,36 +53,57 @@ class RegistrationController extends Controller
             'scan_ktp' => 'required|image|max:2048',
             'scan_sk' => 'required|image|max:2048',
             'signature' => 'required|string',
+            'mengenal_dari' => 'nullable|string',
+            'fasilitas_menarik' => 'nullable|array',
         ]);
 
-        $validatedData['user_id'] = Auth::id();
-        $validatedData['email'] = Auth::user()->email;
+        // Simpan data yang TIDAK ADA di database ke dalam session
+        $request->session()->put('pdf_temp_data', [
+            'mengenal_dari' => $validatedData['mengenal_dari'] ?? null,
+            'fasilitas_menarik' => $validatedData['fasilitas_menarik'] ?? [],
+        ]);
 
-        // Simpan file ke storage
-        $validatedData['path_pas_foto'] = $request->file('pas_foto')->store('uploads/foto', 'public');
-        $validatedData['path_ktp'] = $request->file('scan_ktp')->store('uploads/ktp', 'public');
-        $validatedData['path_sk_pegawai'] = $request->file('scan_sk')->store('uploads/sk', 'public');
-        $validatedData['tanda_tangan'] = $request->signature;
+        // Siapkan data yang akan disimpan ke database
+        $dbData = $validatedData;
+        $dbData['user_id'] = Auth::id();
+        $dbData['email'] = Auth::user()->email;
+        $dbData['path_pas_foto'] = $request->file('pas_foto')->store('uploads/foto', 'public');
+        $dbData['path_ktp'] = $request->file('scan_ktp')->store('uploads/ktp', 'public');
+        $dbData['path_sk_pegawai'] = $request->file('scan_sk')->store('uploads/sk', 'public');
+        $dbData['tanda_tangan'] = $request->signature;
 
-        // Simpan data ke database
-        $registration = Registration::create($validatedData);
+        // Hapus data yang tidak ada kolomnya di database
+        unset(
+            $dbData['mengenal_dari'],
+            $dbData['fasilitas_menarik'],
+            $dbData['pas_foto'],
+            $dbData['scan_ktp'],
+            $dbData['scan_sk'],
+            $dbData['signature']
+        );
 
-        // Setelah berhasil, arahkan ke halaman preview PDF
+        // Buat record pendaftaran
+        $registration = Registration::create($dbData);
+
+        // Arahkan ke halaman preview
         return redirect()->route('registration.preview', $registration->id);
     }
 
-    // FUNGSI BARU: Menampilkan preview PDF
     public function preview($id)
     {
         $registration = Registration::findOrFail($id);
-        // Pastikan hanya user yang bersangkutan yang bisa melihat preview-nya
         if ($registration->user_id !== Auth::id()) {
             abort(403);
         }
+
+        // Ambil data sementara dari session untuk ditampilkan di halaman preview
+        $tempData = session('pdf_temp_data', []);
+        $registration->mengenal_dari = $tempData['mengenal_dari'] ?? null;
+        $registration->fasilitas_menarik = $tempData['fasilitas_menarik'] ?? [];
+
         return view('registration.preview', compact('registration'));
     }
 
-    // FUNGSI BARU: Download PDF
     public function download($id)
     {
         $registration = Registration::findOrFail($id);
@@ -91,7 +111,17 @@ class RegistrationController extends Controller
             abort(403);
         }
 
+        // Ambil data sementara dari session untuk PDF
+        $tempData = session('pdf_temp_data', []);
+        $registration->mengenal_dari = $tempData['mengenal_dari'] ?? null;
+        $registration->fasilitas_menarik = $tempData['fasilitas_menarik'] ?? [];
+
+        // Buat PDF dengan data yang sudah digabungkan
         $pdf = Pdf::loadView('pdf.registration', ['registration' => $registration]);
+
+        // Hapus session setelah PDF dibuat agar tidak terpakai lagi
+        session()->forget('pdf_temp_data');
+
         return $pdf->download('formulir-pendaftaran-'.$registration->nama_lengkap.'.pdf');
     }
 }
