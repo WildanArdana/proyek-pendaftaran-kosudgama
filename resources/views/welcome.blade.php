@@ -11,11 +11,13 @@
     <body class="antialiased bg-gray-50">
         <div class="relative min-h-screen flex flex-col items-center justify-center text-center px-6">
             
-            {{-- KONTEN UTAMA DI TENGAH --}}
+            {{-- Konten Utama di Tengah --}}
             <div class="max-w-2xl w-full">
                 
                 {{-- Logo --}}
-                <img src="{{ asset('images/logo.png') }}" alt="Logo KOSUDGAMA" class="h-32 mx-auto mb-6">
+                <a href="/">
+                    <img src="{{ asset('images/logo.png') }}" alt="Logo KOSUDGAMA" class="h-32 mx-auto mb-6">
+                </a>
                 
                 {{-- Judul --}}
                 <h1 class="text-4xl font-bold text-gray-800 tracking-tight">
@@ -39,7 +41,6 @@
                         Masuk (Login)
                      </a>
                 </div>
-
             </div>
 
              {{-- Footer --}}

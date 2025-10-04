@@ -16,7 +16,7 @@ class RegistrationController extends Controller
      */
     public function store(Request $request)
     {
-        // Logika untuk menggabungkan input dari radio button atau input teks lainnya
+        // 1. Logika untuk menggabungkan input dari radio button atau input teks lainnya
         $mengenalDari = $request->input('mengenal_dari_radio');
         if ($mengenalDari === 'Lain-lain') {
             $request->merge(['mengenal_dari' => $request->input('mengenal_dari_lainnya')]);
@@ -32,7 +32,7 @@ class RegistrationController extends Controller
             $request->merge(['pekerjaan' => $pekerjaan]);
         }
 
-        // Validasi semua data dari form
+        // 2. Validasi semua data dari form (Wajib ada file KTA)
         $validatedData = $request->validate([
             'nama_lengkap' => 'required|string|max:255',
             'tempat_lahir' => 'required|string|max:255',
@@ -52,8 +52,10 @@ class RegistrationController extends Controller
             'kode_pos_instansi' => 'required|string|max:10',
             'nama_referensi_1' => 'required|string|max:255',
             'no_anggota_referensi_1' => 'required|string|max:255',
+            'kta_referensi_1' => 'required|image|max:2048', // FILE KTA 1 BARU
             'nama_referensi_2' => 'required|string|max:255',
             'no_anggota_referensi_2' => 'required|string|max:255',
+            'kta_referensi_2' => 'required|image|max:2048', // FILE KTA 2 BARU
             'pas_foto' => 'required|image|max:2048',
             'scan_ktp' => 'required|image|max:2048',
             'scan_sk' => 'required|image|max:2048',
@@ -62,35 +64,41 @@ class RegistrationController extends Controller
             'fasilitas_menarik' => 'nullable|array',
         ]);
 
-        // Simpan data yang TIDAK ADA di database ke dalam session
+        // 3. Simpan data yang TIDAK ADA di database ke dalam session (untuk keperluan preview/PDF)
         $request->session()->put('pdf_temp_data', [
             'mengenal_dari' => $validatedData['mengenal_dari'] ?? null,
             'fasilitas_menarik' => $validatedData['fasilitas_menarik'] ?? [],
         ]);
 
-        // Siapkan data yang akan disimpan ke database
+        // 4. Siapkan data yang akan disimpan ke database (termasuk path file)
         $dbData = $validatedData;
         $dbData['user_id'] = Auth::id();
         $dbData['email'] = Auth::user()->email;
+
+        // Simpan File
         $dbData['path_pas_foto'] = $request->file('pas_foto')->store('uploads/foto', 'public');
         $dbData['path_ktp'] = $request->file('scan_ktp')->store('uploads/ktp', 'public');
         $dbData['path_sk_pegawai'] = $request->file('scan_sk')->store('uploads/sk', 'public');
+        $dbData['path_kta_referensi_1'] = $request->file('kta_referensi_1')->store('uploads/referensi_kta', 'public');
+        $dbData['path_kta_referensi_2'] = $request->file('kta_referensi_2')->store('uploads/referensi_kta', 'public');
         $dbData['tanda_tangan'] = $request->signature;
 
-        // Hapus data yang tidak ada kolomnya di database
+        // 5. Hapus input file/temporary field yang tidak ada kolomnya di database
         unset(
             $dbData['mengenal_dari'],
             $dbData['fasilitas_menarik'],
             $dbData['pas_foto'],
             $dbData['scan_ktp'],
             $dbData['scan_sk'],
+            $dbData['kta_referensi_1'], // Hapus input file
+            $dbData['kta_referensi_2'], // Hapus input file
             $dbData['signature']
         );
 
-        // Buat record pendaftaran
+        // 6. Buat record pendaftaran
         $registration = Registration::create($dbData);
 
-        // Arahkan ke halaman preview
+        // 7. Arahkan ke halaman preview
         return redirect()->route('registration.preview', $registration->id);
     }
 
@@ -137,7 +145,6 @@ class RegistrationController extends Controller
     }
 
     /**
-     * FUNGSI BARU
      * Menampilkan formulir untuk diedit.
      */
     public function edit(Registration $registration)
@@ -150,7 +157,6 @@ class RegistrationController extends Controller
     }
 
     /**
-     * FUNGSI BARU
      * Memproses perubahan dari formulir edit.
      */
     public function update(Request $request, Registration $registration)
@@ -159,7 +165,7 @@ class RegistrationController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        // Logika untuk menggabungkan input dari radio button (sama seperti di fungsi store)
+        // 1. Logika untuk menggabungkan input dari radio button (sama seperti di fungsi store)
         $mengenalDari = $request->input('mengenal_dari_radio');
         if ($mengenalDari === 'Lain-lain') {
             $request->merge(['mengenal_dari' => $request->input('mengenal_dari_lainnya')]);
@@ -175,7 +181,7 @@ class RegistrationController extends Controller
             $request->merge(['pekerjaan' => $pekerjaan]);
         }
 
-        // Validasi data, file dibuat opsional (nullable)
+        // 2. Validasi data (file/image dibuat opsional/nullable)
         $validatedData = $request->validate([
             'nama_lengkap' => 'required|string|max:255',
             'tempat_lahir' => 'required|string|max:255',
@@ -186,6 +192,7 @@ class RegistrationController extends Controller
             'alamat_rumah' => 'required|string',
             'kode_pos_rumah' => 'required|string|max:10',
             'telepon_rumah' => 'nullable|string|max:15',
+            // Gunakan Rule::unique()->ignore($registration->id) agar record sendiri bisa diabaikan
             'no_ktp' => ['required', 'string', 'max:20', Rule::unique('registrations')->ignore($registration->id)],
             'no_hp' => ['required', 'string', 'max:15', Rule::unique('registrations')->ignore($registration->id)],
             'pekerjaan' => 'required|string|max:255',
@@ -195,40 +202,58 @@ class RegistrationController extends Controller
             'kode_pos_instansi' => 'required|string|max:10',
             'nama_referensi_1' => 'required|string|max:255',
             'no_anggota_referensi_1' => 'required|string|max:255',
+            'kta_referensi_1' => 'nullable|image|max:2048', // FILE KTA 1 Opsional
             'nama_referensi_2' => 'required|string|max:255',
             'no_anggota_referensi_2' => 'required|string|max:255',
+            'kta_referensi_2' => 'nullable|image|max:2048', // FILE KTA 2 Opsional
             'pas_foto' => 'nullable|image|max:2048', // Opsional
             'scan_ktp' => 'nullable|image|max:2048', // Opsional
             'scan_sk' => 'nullable|image|max:2048', // Opsional
         ]);
-        
-        // Data non-database disimpan terpisah untuk preview/pdf jika diperlukan nanti
-        // Namun untuk update, kita langsung simpan perubahannya
-        
+
         $updateData = $validatedData;
 
-        // Logika untuk mengganti file jika ada file baru yang di-upload
-        if ($request->hasFile('pas_foto')) {
-            Storage::disk('public')->delete($registration->path_pas_foto); // Hapus file lama
-            $updateData['path_pas_foto'] = $request->file('pas_foto')->store('uploads/foto', 'public');
-        }
-        if ($request->hasFile('scan_ktp')) {
-            Storage::disk('public')->delete($registration->path_ktp);
-            $updateData['path_ktp'] = $request->file('scan_ktp')->store('uploads/ktp', 'public');
-        }
-        if ($request->hasFile('scan_sk')) {
-            Storage::disk('public')->delete($registration->path_sk_pegawai);
-            $updateData['path_sk_pegawai'] = $request->file('scan_sk')->store('uploads/sk', 'public');
-        }
+        // 3. Logika untuk mengganti file jika ada file baru yang di-upload
+        $this->handleFileUpload($request, $registration, 'pas_foto', 'path_pas_foto', 'uploads/foto', $updateData);
+        $this->handleFileUpload($request, $registration, 'scan_ktp', 'path_ktp', 'uploads/ktp', $updateData);
+        $this->handleFileUpload($request, $registration, 'scan_sk', 'path_sk_pegawai', 'uploads/sk', $updateData);
 
-        // Set status kembali ke "Menunggu Verifikasi" dan hapus catatan revisi
-        // (Asumsi kolom ini ada di tabel 'registrations')
+        // Logika untuk file KTA Referensi BARU
+        $this->handleFileUpload($request, $registration, 'kta_referensi_1', 'path_kta_referensi_1', 'uploads/referensi_kta', $updateData);
+        $this->handleFileUpload($request, $registration, 'kta_referensi_2', 'path_kta_referensi_2', 'uploads/referensi_kta', $updateData);
+        
+        // Hapus input file dari data update agar tidak disimpan ke database
+        unset(
+            $updateData['kta_referensi_1'],
+            $updateData['kta_referensi_2'],
+            $updateData['pas_foto'],
+            $updateData['scan_ktp'],
+            $updateData['scan_sk']
+        );
+        
+        // 4. Set status kembali ke "Menunggu Verifikasi" dan hapus catatan revisi
         $updateData['status'] = 'Menunggu Verifikasi';
         $updateData['rejection_reason'] = null;
 
+        // 5. Update data pendaftaran
         $registration->update($updateData);
 
         return redirect()->route('dashboard')->with('status', 'Perubahan berhasil disimpan dan data Anda telah dikirim ulang untuk verifikasi.');
+    }
+
+    /**
+     * Helper function untuk mengelola upload file saat update.
+     */
+    protected function handleFileUpload(Request $request, Registration $registration, $requestKey, $modelKey, $path, &$updateData)
+    {
+        if ($request->hasFile($requestKey)) {
+            // Hapus file lama jika ada
+            if ($registration->$modelKey) {
+                Storage::disk('public')->delete($registration->$modelKey);
+            }
+            // Simpan file baru
+            $updateData[$modelKey] = $request->file($requestKey)->store($path, 'public');
+        }
     }
 
 
@@ -240,12 +265,17 @@ class RegistrationController extends Controller
         $registration = Auth::user()->registration;
 
         if ($registration) {
-            // Hapus file-file yang ter-upload dari storage
-            Storage::disk('public')->delete([
+            // Hapus semua file yang ter-upload dari storage
+            $filesToDelete = [
                 $registration->path_pas_foto,
                 $registration->path_ktp,
                 $registration->path_sk_pegawai,
-            ]);
+                $registration->path_kta_referensi_1, // Tambahkan KTA 1
+                $registration->path_kta_referensi_2, // Tambahkan KTA 2
+            ];
+
+            // Hapus file dari storage
+            Storage::disk('public')->delete(array_filter($filesToDelete));
 
             // Hapus data dari database
             $registration->delete();
